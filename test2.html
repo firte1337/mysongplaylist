@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Telegram Music Mini App</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<style>
+:root {
+    --bg:#1A1A1D;
+    --accent:#C3073F;
+    --accent2:#950740;
+    --glass:rgba(255,255,255,.12);
+    --border:rgba(255,255,255,.18);
+}
+
+body {
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
+    background:var(--bg);
+    color:#fff;
+    padding-bottom:120px;
+}
+
+.glass {
+    background:var(--glass);
+    backdrop-filter:blur(28px);
+    border:1px solid var(--border);
+    border-radius:22px;
+}
+
+.container {padding:20px;max-width:720px;margin:auto}
+.header {font-size:22px;font-weight:700;padding:20px}
+
+.track {
+    display:flex;
+    gap:12px;
+    padding:14px;
+    margin-bottom:10px;
+    cursor:pointer;
+}
+.track.active {outline:2px solid var(--accent)}
+.track small {color:#aaa}
+
+.player {
+    position:fixed;
+    left:16px;
+    right:16px;
+    bottom:70px;
+    padding:20px;
+    transform:translateY(120%);
+    transition:.35s;
+    box-shadow:0 20px 40px rgba(0,0,0,.4);
+}
+.player.active {transform:translateY(0)}
+
+.waveform {
+    display:flex;
+    gap:4px;
+    justify-content:center;
+    height:40px;
+    margin:16px 0;
+}
+.waveform span {
+    width:4px;
+    height:6px;
+    background:linear-gradient(var(--accent),var(--accent2));
+    border-radius:4px;
+    transform-origin:bottom;
+}
+
+.progress-bar {
+    height:4px;
+    background:#333;
+    border-radius:2px;
+    overflow:hidden;
+}
+.progress {height:100%;width:0;background:var(--accent)}
+
+.controls {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:14px;
+}
+.ctrl {
+    width:46px;
+    height:46px;
+    border-radius:50%;
+    background:var(--glass);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+}
+.ctrl.main {background:var(--accent);width:56px;height:56px}
+.ctrl.active {outline:2px solid var(--accent)}
+
+.volume {
+    margin-top:12px;
+}
+.volume input {width:100%}
+
+.queue {
+    margin-top:16px;
+    max-height:160px;
+    overflow:auto;
+}
+.queue-item {
+    padding:10px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    cursor:pointer;
+}
+.queue-item.active {background:rgba(195,7,63,.2)}
+.queue-item small {color:#aaa}
+</style>
+</head>
+
+<body>
+
+<div class="header">🎧 Музыка</div>
+<div class="container" id="trackList"></div>
+
+<!-- PLAYER -->
+<div class="player glass" id="player">
+    <div>
+        <strong id="pTitle"></strong><br>
+        <small id="pArtist"></small>
+    </div>
+
+    <div class="waveform" id="waveform">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <div class="progress-bar"><div class="progress" id="progress"></div></div>
+
+    <div class="controls">
+        <div class="ctrl" id="shuffleBtn" onclick="toggleShuffle()">🔀</div>
+        <div class="ctrl" onclick="prevTrack()">⏮</div>
+        <div class="ctrl main" onclick="togglePlay()">▶</div>
+        <div class="ctrl" onclick="nextTrack()">⏭</div>
+        <div class="ctrl" id="repeatBtn" onclick="toggleRepeat()">🔁</div>
+    </div>
+
+    <!-- VOLUME -->
+    <div class="volume">
+        🔊 Громкость
+        <input type="range" min="0" max="1" step="0.01" value="1" onchange="setVolume(this.value)">
+    </div>
+
+    <!-- QUEUE -->
+    <div class="queue glass" id="queue"></div>
+</div>
+
+<audio id="audio"></audio>
+
+<script>
+Telegram.WebApp.expand();
+
+const tracks = [
+ {title:"Track One",artist:"Artist",url:"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"},
+ {title:"Track Two",artist:"Artist",url:"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"},
+ {title:"Track Three",artist:"Artist",url:"https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"}
+];
+
+const audio = document.getElementById('audio');
+const player = document.getElementById('player');
+const progress = document.getElementById('progress');
+
+let index = 0;
+let shuffle=false, repeat=false;
+let ctx, analyser, source;
+
+function renderTracks(){
+ const list=document.getElementById('trackList');
+ tracks.forEach((t,i)=>{
+  const el=document.createElement('div');
+  el.className='track glass';
+  el.innerHTML=`<div>🎵</div><div><b>${t.title}</b><br><small>${t.artist}</small></div>`;
+  el.onclick=()=>play(i);
+  list.appendChild(el);
+ });
+}
+
+function renderQueue(){
+ const q=document.getElementById('queue');
+ q.innerHTML='';
+ tracks.forEach((t,i)=>{
+  const el=document.createElement('div');
+  el.className='queue-item'+(i===index?' active':'');
+  el.innerHTML=`${t.title}<br><small>${t.artist}</small>`;
+  el.onclick=()=>play(i);
+  q.appendChild(el);
+ });
+}
+
+function play(i){
+ index=i;
+ const t=tracks[i];
+ audio.src=t.url;
+ audio.play();
+ document.getElementById('pTitle').textContent=t.title;
+ document.getElementById('pArtist').textContent=t.artist;
+ player.classList.add('active');
+ renderQueue();
+ if(!ctx) initWave();
+}
+
+function togglePlay(){audio.paused?audio.play():audio.pause()}
+function prevTrack(){play((index-1+tracks.length)%tracks.length)}
+function nextTrack(){
+ if(shuffle) play(Math.floor(Math.random()*tracks.length));
+ else play((index+1)%tracks.length);
+}
+function toggleShuffle(){shuffle=!shuffle;shuffleBtn.classList.toggle('active',shuffle)}
+function toggleRepeat(){repeat=!repeat;repeatBtn.classList.toggle('active',repeat)}
+function setVolume(v){audio.volume=v}
+
+audio.ontimeupdate=()=>progress.style.width=(audio.currentTime/audio.duration*100)+'%';
+audio.onended=()=>repeat?play(index):nextTrack();
+
+function initWave(){
+ ctx=new AudioContext();
+ analyser=ctx.createAnalyser();
+ analyser.fftSize=64;
+ source=ctx.createMediaElementSource(audio);
+ source.connect(analyser);
+ analyser.connect(ctx.destination);
+ const bars=document.querySelectorAll('#waveform span');
+ const data=new Uint8Array(analyser.frequencyBinCount);
+ (function anim(){
+  analyser.getByteFrequencyData(data);
+  bars.forEach((b,i)=>b.style.height=Math.max(6,data[i%data.length]/3)+'px');
+  requestAnimationFrame(anim);
+ })();
+}
+
+renderTracks();
+renderQueue();
+</script>
+</body>
+</html>
